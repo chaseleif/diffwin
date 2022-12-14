@@ -123,7 +123,7 @@ class DiffWindow:
     # the default color is standard color
     color = curses.color_pair(0)
     # clear the screen and add lines
-    self.stdscr.clear()
+    self.stdscr.erase()
     for i in range(height):
       if dohighlight:
         # if the strings match (without leading/trailing space)
