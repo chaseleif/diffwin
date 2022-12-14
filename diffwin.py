@@ -152,8 +152,8 @@ class DiffWindow:
   '''
   def showdiff(self, lhs=[], rhs=[]):
     # remove empty lines from lhs / rhs
-    lhs = [line for line in lhs if line.strip() != '']
-    rhs = [line for line in rhs if line.strip() != '']
+    lhs = [line.rstrip('\n') for line in lhs if line.strip() != '']
+    rhs = [line.rstrip('\n') for line in rhs if line.strip() != '']
     # get max columns to prevent scrolling too far right
     self.lwidth = 0
     for row in lhs:
@@ -245,10 +245,10 @@ class DiffWindow:
       # scroll right
       elif ch == curses.KEY_RIGHT:
         if not singlescroll or leftscroll:
-          if lastwidth//2 - 4 < self.lwidth:
+          if lastwidth//2 - 2 < self.lwidth:
             if lpos[1] < self.lwidth - lastwidth//2 + 2: lpos[1] += 1
         if not singlescroll or not leftscroll:
-          if lastwidth//2 - 4 < self.rwidth:
+          if lastwidth//2 - 2 < self.rwidth:
             if rpos[1] < self.rwidth - lastwidth//2 + 2: rpos[1] += 1
       else:
         # If we didn't change the pos then don't repaint
