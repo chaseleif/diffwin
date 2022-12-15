@@ -39,6 +39,7 @@ import curses, sys
   ___________
   The 'space' key toggles independent/locked scrolling
   The 'tab' key switches between lhs/rhs for independent scrolling
+  The '+' and '-' keys (plus/minus) will shift the pane separator left/right
   The keys d, D, h, or H toggle match highlighting
     (d for diff, h for highlight)
   When highlighting is enabled lhs/rhs lines that are the same
@@ -55,8 +56,16 @@ import curses, sys
           rhs = [line.strip() for line in infile.readlines()]
         win.listdiff(lhs,rhs)
 '''
+
 class DiffWindow:
-  def __init__(self): pass
+  '''
+  __init__
+
+    set unsafe flag which can allow usage without enter/exit
+    The intended usage is as described above and in the name==__main__ usage
+  '''
+  def __init__(self, unsafe=False): self.unsafe = unsafe
+
   '''
   __enter__
 
@@ -64,6 +73,7 @@ class DiffWindow:
     Returns self for use with the listdiff() function
   '''
   def __enter__(self):
+    self.unsafe = False
     return self.initscr()
 
   '''
@@ -80,7 +90,9 @@ class DiffWindow:
     Delete for an improper usage
   '''
   def __del__(self):
-    self.stopscr()
+    try:
+      if self.havescr: self.stopscr()
+    except AttributeError: pass
 
   '''
   initscr
@@ -89,7 +101,7 @@ class DiffWindow:
   '''
   def initscr(self):
     # flag init
-    self.isinit = None
+    self.havescr = True
     # get the std screen
     self.stdscr = curses.initscr()
     # enable color output
@@ -117,6 +129,7 @@ class DiffWindow:
   '''
   def stopscr(self):
     # reset modes back to normal
+    self.havescr = False
     curses.nocbreak()
     self.stdscr.keypad(False)
     curses.echo()
@@ -132,13 +145,15 @@ class DiffWindow:
     there is a small gap between lhs / rhs for readability
     the screen is cleared, strings added to screen, then refreshed
   '''
-  def draw(self, lhs, lpos, rhs, rpos, dohighlight):
+  def draw(self, lhs, lpos, rhs, rpos, dohighlight, paneshmt):
+    # the current height and width (will change if window is resized)
     height, width = self.stdscr.getmaxyx()
-    # starting column for lhs -vs- rhs
+    # starting column for lhs -vs- rhs, lhs will always start at column 0
     rstart = width//2 + 2
     # don't separate them by too much if we have extra space
-    if rstart > self.lwidth + 6:
-      rstart = self.lwidth + 6
+    if rstart > self.lwidth + 4:
+      rstart = self.lwidth + 4
+    # we use the l and rstop to determine ending index of printed string
     # lhs would stop 4 chars before rstart
     lstop = rstart - 4
     # rhs can use chars from rstart to width
@@ -146,12 +161,31 @@ class DiffWindow:
     # if the starting column is > 0 then we also shift the stop
     lstop += lpos[1]
     rstop += rpos[1]
+    # shift boundary left or right
+    if paneshmt != 0:
+      # paneshmt will be negative or positive
+      lstop += paneshmt
+      rstart += paneshmt
+      # if the lstop or rstart have moved out of bounds to the left
+      if lstop <= lpos[1] or rstart <= 4:
+        # rhs uses the entire width
+        lstop = lpos[1]
+        rstart = 0
+        rstop = width+rpos[1]
+      # if the rstart moved out of bounds to the right
+      elif rstart >= width:
+        rstart = 0
+        rstop = 0
+        lstop = width+lpos[1]
+      # otherwise the boundary is still in the middle
+      else:
+        rstop = width-rstart+rpos[1]
     # the default color is standard color
     color = curses.color_pair(0)
     # clear the screen and add lines
     self.stdscr.erase()
     for i in range(height):
-      if dohighlight:
+      if dohighlight and i+lpos[0] >= 0 and i+rpos[0] >= 0:
         # if the strings match (without leading/trailing space)
         if i+lpos[0] < len(lhs) and i+rpos[0] < len(rhs) and \
               lhs[lpos[0]+i].strip() == rhs[rpos[0]+i].strip():
@@ -160,10 +194,10 @@ class DiffWindow:
         # otherwise standard color
         else: color = curses.color_pair(0)
       # draw lhs if we have a row here
-      if i+lpos[0] < len(lhs):
+      if i+lpos[0] >= 0 and i+lpos[0] < len(lhs):
         self.stdscr.addstr(i, 0, lhs[lpos[0]+i][lpos[1]:lstop], color)
       # draw rhs if we have a row here
-      if i+rpos[0] < len(rhs):
+      if i+rpos[0] >= 0 and i+rpos[0] < len(rhs):
         self.stdscr.addstr(i, rstart, rhs[rpos[0]+i][rpos[1]:rstop], color)
     self.stdscr.refresh()
     return height, width
@@ -177,10 +211,13 @@ class DiffWindow:
     Returns when the escape, q, or Q key has been pressed
   '''
   def showdiff(self, lhs=[], rhs=[]):
-    # handle if class is used improperly
+    # confirm class usage
     try:
-      if not self.isinit: pass
-    except AttributeError: self.initscr()
+      if not self.havescr: self.initscr()
+    except AttributeError:
+      if self.unsafe: self.initscr()
+      else:
+        raise AssertionError('unsafe is not true and curses not initialized')
     # remove empty lines from lhs / rhs
     lhs = [line.rstrip() for line in lhs if line.strip() != '']
     rhs = [line.rstrip() for line in rhs if line.strip() != '']
@@ -203,6 +240,8 @@ class DiffWindow:
     leftscroll = True
     # toggle for whether to highlight matching lines
     dohighlight = True
+    # shift amount for pane boundary, division between lhs/rhs views
+    paneshmt = 0
     # these chars will quit: escape = 27, 'Q'=81, 'q'=113
     # we'll start at home
     ch = curses.KEY_HOME
@@ -218,54 +257,58 @@ class DiffWindow:
       elif ch == 9: leftscroll = not leftscroll
       # toggle line match highlight with d, D, h, or H (for diff/highlight)
       elif ch in [68, 72, 100, 104]: dohighlight = not dohighlight
+      # plus key to shift pane separator right
+      elif ch == 43 and paneshmt < lastwidth//2 + 2: paneshmt += 1
+      # minus key to shift pane separator left
+      elif ch == 45 and paneshmt > -(lastwidth//2 - 2): paneshmt -= 1
       # reset positions
       elif ch == curses.KEY_HOME:
-        if not singlescroll: lpos, rpos = [0,0], [0,0]
-        elif leftscroll: lpos = [0,0]
-        else: rpos = [0,0]
+        if not singlescroll: lpos, rpos = [-1,0], [-1,0]
+        elif leftscroll: lpos = [-1,0]
+        else: rpos = [-1,0]
       # go to the bottom
       elif ch == curses.KEY_END:
         if not singlescroll or leftscroll:
           # fit our maxheight in the last known height
           if lastheight < len(lhs):
-            lpos[0] = len(lhs) - lastheight
+            lpos[0] = len(lhs) - lastheight + 1
         if not singlescroll or not leftscroll:
           if lastheight < len(rhs):
-            rpos[0] = len(rhs) - lastheight
+            rpos[0] = len(rhs) - lastheight + 1
       # page up
       elif ch == curses.KEY_PPAGE:
         if not singlescroll or leftscroll:
           lpos[0] -= lastheight - 4
-          if lpos[0] < 0: lpos[0] = 0
+          if lpos[0] < 0: lpos[0] = -1
         if not singlescroll or not leftscroll:
           rpos[0] -= lastheight - 4
-          if rpos[0] < 0: rpos[0] = 0
+          if rpos[0] < 0: rpos[0] = -1
       # page down
       elif ch == curses.KEY_NPAGE:
         if not singlescroll or leftscroll:
           if lastheight < len(lhs):
             lpos[0] += lastheight - 4
             if lpos[0] > len(lhs) - lastheight:
-              lpos[0] = len(lhs) - lastheight
+              lpos[0] = len(lhs) - lastheight + 1
         if not singlescroll or not leftscroll:
           if lastheight < len(rhs):
             rpos[0] += lastheight - 4
             if rpos[0] > len(rhs) - lastheight:
-              rpos[0] = len(rhs) - lastheight
+              rpos[0] = len(rhs) - lastheight + 1
       # scroll up
       elif ch == curses.KEY_UP:
         if not singlescroll or leftscroll:
-          if lpos[0] > 0: lpos[0] -= 1
+          if lpos[0] >= 0: lpos[0] -= 1
         if not singlescroll or not leftscroll:
-          if rpos[0] > 0: rpos[0] -= 1
+          if rpos[0] >= 0: rpos[0] -= 1
       # scroll down
       elif ch == curses.KEY_DOWN:
         if not singlescroll or leftscroll:
           if lastheight < len(lhs):
-            if lpos[0] < len(lhs) - lastheight: lpos[0] += 1
+            if lpos[0] < len(lhs) - lastheight + 1: lpos[0] += 1
         if not singlescroll or not leftscroll:
           if lastheight < len(rhs):
-            if rpos[0] < len(rhs) - lastheight: rpos[0] += 1
+            if rpos[0] < len(rhs) - lastheight + 1: rpos[0] += 1
       # scroll left
       elif ch == curses.KEY_LEFT:
         if not singlescroll or leftscroll:
@@ -276,16 +319,18 @@ class DiffWindow:
       elif ch == curses.KEY_RIGHT:
         if not singlescroll or leftscroll:
           if lastwidth//2 - 2 < self.lwidth:
-            if lpos[1] < self.lwidth - lastwidth//2 + 2: lpos[1] += 1
+            if lpos[1] < self.lwidth - lastwidth//2 + 2 - paneshmt:
+              lpos[1] += 1
         if not singlescroll or not leftscroll:
           if lastwidth//2 - 2 < self.rwidth:
-            if rpos[1] < self.rwidth - lastwidth//2 + 2: rpos[1] += 1
+            if rpos[1] < self.rwidth - lastwidth//2 + 2 + paneshmt:
+              rpos[1] += 1
       else:
         # If we didn't change the pos then don't repaint
         repaint = False
       if repaint: lastheight, lastwidth = self.draw(lhs, lpos,
                                                     rhs, rpos,
-                                                    dohighlight)
+                                                    dohighlight, paneshmt)
       ch = self.stdscr.getch()
 
 '''
@@ -301,15 +346,18 @@ if __name__ == '__main__':
     print('Toggle match highlighting:         d, D, h, H')
     print('Toggle left/right pane lock:       space')
     print('Toggle left/right pane scrolling:  tab')
+    print('Move pane separator left/right:    +/-')
     sys.exit(0)
   lhs, rhs = [], []
   with open(sys.argv[1]) as infile:
     lhs = infile.readlines()
   with open(sys.argv[2]) as infile:
     rhs = infile.readlines()
-  # proper usage
+  # intended usage
   with DiffWindow() as win:
     win.showdiff(lhs, rhs)
-  # improper usage
-  #win = DiffWindow()
+  # class usage
+  #win = DiffWindow(unsafe=True)
+  #win.initscr() # optional, called automatically in showdiff if unsafe=True
   #win.showdiff(lhs, rhs)
+  #win.stopscr() # called in del if initscr has been called
