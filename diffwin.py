@@ -64,6 +64,24 @@ class DiffWindow:
     Returns self for use with the listdiff() function
   '''
   def __enter__(self):
+    return self.initscr()
+
+  '''
+  __exit__
+
+    We teardown curses and return the terminal to normal operation
+  '''
+  def __exit__(self, type, value, traceback):
+    self.stopscr()
+
+  '''
+  initscr
+
+    The actual init function to init curses and set vars
+  '''
+  def initscr(self):
+    # flag init
+    self.isinit = None
     # get the std screen
     self.stdscr = curses.initscr()
     # enable color output
@@ -85,11 +103,11 @@ class DiffWindow:
     return self
 
   '''
-  __exit__
+  stopscr
 
-    We teardown curses and return the terminal to normal operation
+    The actual stop method to teardown the curses
   '''
-  def __exit__(self, type, value, traceback):
+  def stopscr(self):
     # reset modes back to normal
     curses.nocbreak()
     self.stdscr.keypad(False)
@@ -151,9 +169,13 @@ class DiffWindow:
     Returns when the escape, q, or Q key has been pressed
   '''
   def showdiff(self, lhs=[], rhs=[]):
+    # handle if class is used improperly
+    try:
+      if not self.isinit: pass
+    except AttributeError: self.initscr()
     # remove empty lines from lhs / rhs
-    lhs = [line.rstrip('\n') for line in lhs if line.strip() != '']
-    rhs = [line.rstrip('\n') for line in rhs if line.strip() != '']
+    lhs = [line.rstrip() for line in lhs if line.strip() != '']
+    rhs = [line.rstrip() for line in rhs if line.strip() != '']
     # get max columns to prevent scrolling too far right
     self.lwidth = 0
     for row in lhs:
@@ -279,4 +301,3 @@ if __name__ == '__main__':
     rhs = infile.readlines()
   with DiffWindow() as win:
     win.showdiff(lhs, rhs)
-
