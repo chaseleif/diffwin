@@ -75,6 +75,14 @@ class DiffWindow:
     self.stopscr()
 
   '''
+  __del__
+
+    Delete for an improper usage
+  '''
+  def __del__(self):
+    self.stopscr()
+
+  '''
   initscr
 
     The actual init function to init curses and set vars
@@ -299,5 +307,9 @@ if __name__ == '__main__':
     lhs = infile.readlines()
   with open(sys.argv[2]) as infile:
     rhs = infile.readlines()
+  # proper usage
   with DiffWindow() as win:
     win.showdiff(lhs, rhs)
+  # improper usage
+  #win = DiffWindow()
+  #win.showdiff(lhs, rhs)
