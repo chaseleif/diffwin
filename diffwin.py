@@ -84,8 +84,7 @@ class DiffWindow:
 
     We teardown curses and return the terminal to normal operation
   '''
-  def __exit__(self, type, value, traceback):
-    self.stopscr()
+  def __exit__(self, type, value, traceback): self.stopscr()
 
   '''
   __del__
@@ -104,6 +103,9 @@ class DiffWindow:
   '''
   def initscr(self):
     # flag init
+    try:
+      if self.havescr: return
+    except AttributeError: pass
     self.havescr = True
     # get the std screen
     self.stdscr = curses.initscr()
@@ -114,7 +116,7 @@ class DiffWindow:
     # this will be for standard text
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
     # this will be for title text
-    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)
     # this will be error text
     curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
     # suppress echo of keypresses
@@ -136,11 +138,14 @@ class DiffWindow:
   '''
   def stopscr(self):
     # reset modes back to normal
-    self.havescr = False
-    curses.nocbreak()
-    self.stdscr.keypad(False)
-    curses.echo()
-    curses.endwin()
+    try:
+      if self.havescr:
+        self.havescr = False
+        curses.nocbreak()
+        self.stdscr.keypad(False)
+        curses.echo()
+        curses.endwin()
+    except AttributeError: pass
 
   '''
   draw(lhs, lpos, rhs, rpos, dohighlight)
@@ -246,10 +251,10 @@ class DiffWindow:
     # get column length for lhs and rhs (max of any element)
     self.lwidth = 0
     for row in lhs:
-      if len(row) > self.lwidth: self.lwidth = len(row)
+      self.lwidth = max(len(row),self.lwidth)
     self.rwidth = 0
     for row in rhs:
-      if len(row) > self.rwidth: self.rwidth = len(row)
+      self.rwidth = max(len(row),self.rwidth)
     # track top left 'coordinate' of the text in the lists
     # the l/rpos is the starting row + col to display
     lpos = [0,0] # lpos[0] is starting row
@@ -382,6 +387,14 @@ class DiffWindow:
   def showmenu(self,
                 title='', body=[[]], err=None, choices=[],
                 infobox=False, curs=0):
+    # track width
+    maxwidth = len(title)
+    for section in body:
+      for line in section:
+        maxwidth = max(len(line),maxwidth)
+    if err: maxwidth = max(len(err),maxwidth)
+    for line in choices:
+      maxwidth = max(len(line),maxwidth)
     # set colors to be used
     titlecolor = curses.color_pair(2) | curses.A_BOLD
     itemcolor = curses.color_pair(1)
@@ -394,24 +407,27 @@ class DiffWindow:
     while True:
       # get the current dimensions
       height, width = self.stdscr.getmaxyx()
+      # get side buffer
+      lshift = 0
+      if maxwidth < width: lshift = (width-maxwidth)//2
       # clear the screen
       self.stdscr.erase()
       # add the title
-      self.stdscr.insstr(0, 0, title[:width], titlecolor)
+      self.stdscr.insstr(0, 0+lshift, title, titlecolor)
       # track the line number we are printing to
       linenum = 1
       for section in body:
         # print all lines in a section of the body
         for line in section:
           linenum += 1
-          self.stdscr.insstr(linenum, 4, line[:width-4], itemcolor)
+          self.stdscr.insstr(linenum, 4+lshift, line, itemcolor)
         # separate body sections by a newline
         linenum += 1
       # separate body from remainder with another newline
       linenum += 1
       if err:
         # print an error message if we have one, add 2 lines
-        self.stdscr.insstr(linenum, 4, err[:width-4], errorcolor)
+        self.stdscr.insstr(linenum, 4+lshift, err, errorcolor)
         linenum += 2
       # track the actual top line of the choices
       actualtop = linenum
@@ -423,10 +439,14 @@ class DiffWindow:
         if i >= topline:
           # set the color to active if this is our highlight position
           color = activecolor if i == hpos else itemcolor
-          self.stdscr.insstr(linenum, 4, line[:width-4], color)
+          self.stdscr.insstr(linenum, 4+lshift, line, color)
           linenum += 1
       # set the cursor according to the argument and refresh the screen
-      curses.curs_set(curs)
+      if curs != 0:
+        cursorcol = 4 + lshift + len(choices[hpos])
+        if cursorcol < width:
+          self.stdscr.move(actualtop + hpos - topline, cursorcol)
+          curses.curs_set(curs)
       self.stdscr.refresh()
       # get our response, reset the cursor and process the response
       ch = self.stdscr.getch()
@@ -526,13 +546,16 @@ class DiffWindow:
       else:
         # try to read the file
         try:
+          if path == '/': path = ''
           # reading the file will fail without permissions
-          # or if the file is not a text file
+          # or if the file is definitely not a text file
+          # (some binary files will pass here and throw an exception if used)
           with open(path+'/'+names[ch]) as infile:
             contents = infile.readlines()
             return contents, names[ch]
         except:
           error = 'Error opening \"' + path + '/' + names[ch] + '\"'
+          if path == '': path = '/'
   '''
   commands()
 
@@ -570,7 +593,7 @@ class DiffWindow:
     title = 'DiffWindow - a Python curses script to compare 2 text files'
     # the body text
     body = [['Copyright (C) 2022 Chase Phelps',
-              'Provided under the GNU GPL v3 license'],
+              'Licensed under the GNU GPL v3 license'],
             ['Choose an option from the menu below:']]
     # the choices
     choices = ['Select the left-hand side file',
@@ -594,20 +617,38 @@ class DiffWindow:
       # open a file to set lhs
       if legend[ch] == 'lhs':
         ret, name = self.filemenu(title=title)
-        if lhs is None and ret is not None:
+        # didn't have a lhs before and didn't get one
+        if lhs is None and ret is None: pass
+        # didn't have a lhs before and have one now
+        elif lhs is None and ret is not None:
           choices[legend.index('lhs')] += ' (set to \"' + name + '\")'
-        elif ret is None:
+        # had a filename and don't have one now, remove filename
+        elif lhs is not None and ret is None:
           choices[legend.index('lhs')] = \
-              choices[legend.index('lhs')].split(' (')[0]
+              choices[legend.index('lhs')].split(' (set to ')[0]
+        # had a filename before and have a different one now
+        else:
+          choices[legend.index('lhs')] = \
+              choices[legend.index('lhs')].split(' (set to ')[0]
+          choices[legend.index('lhs')] += ' (set to \"' + name + '\")'
         lhs = ret
       # open a file to set rhs
       elif legend[ch] == 'rhs':
         ret, name = self.filemenu(title=title)
-        if rhs is None and ret is not None:
+        # didn't have a rhs before and didn't get one
+        if rhs is None and ret is None: pass
+        # didn't have a rhs before and have one now
+        elif rhs is None and ret is not None:
           choices[legend.index('rhs')] += ' (set to \"' + name + '\")'
-        elif ret is None:
+        # had a filename and don't have one now, remove filename
+        elif rhs is not None and ret is None:
           choices[legend.index('rhs')] = \
-              choices[legend.index('rhs')].split(' (')[0]
+              choices[legend.index('rhs')].split(' (set to ')[0]
+        # had a filename before and have a different one now
+        else:
+          choices[legend.index('rhs')] = \
+              choices[legend.index('rhs')].split(' (set to ')[0]
+          choices[legend.index('rhs')] += ' (set to \"' + name + '\")'
         rhs = ret
       # show the diff of lhs and rhs
       elif legend[ch] == 'diff':
