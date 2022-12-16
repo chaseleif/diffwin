@@ -40,6 +40,7 @@ import curses, sys
   The 'space' key toggles independent/locked scrolling
   The 'tab' key switches between lhs/rhs for independent scrolling
   The '+' and '-' keys (plus/minus) will shift the pane separator left/right
+  The '=' key will reset the pane shift
   The keys d, D, h, or H toggle match highlighting
     (d for diff, h for highlight)
   When highlighting is enabled lhs/rhs lines that are the same
@@ -110,6 +111,8 @@ class DiffWindow:
     # COLOR_ BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, WHITE, YELLOW
     # This will be for green text on black
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    # This will be for black text on green
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
     # suppress echo of keypresses
     curses.noecho()
     # immediately respond to keypresses
@@ -146,6 +149,8 @@ class DiffWindow:
     the screen is cleared, strings added to screen, then refreshed
   '''
   def draw(self, lhs, lpos, rhs, rpos, dohighlight, paneshmt):
+    # clear the screen
+    self.stdscr.erase()
     # the current height and width (will change if window is resized)
     height, width = self.stdscr.getmaxyx()
     # starting column for lhs -vs- rhs, lhs will always start at column 0
@@ -161,6 +166,7 @@ class DiffWindow:
     # if the starting column is > 0 then we also shift the stop
     lstop += lpos[1]
     rstop += rpos[1]
+    infocolor = curses.color_pair(2) | curses.A_BOLD
     # shift boundary left or right
     if paneshmt != 0:
       # paneshmt will be negative or positive
@@ -172,20 +178,26 @@ class DiffWindow:
         lstop = lpos[1]
         rstart = 0
         rstop = width+rpos[1]
+        self.stdscr.addstr(0, width-11, 'right file', infocolor)
       # if the rstart moved out of bounds to the right
-      elif rstart >= width:
+      elif rstart >= width-4:
         rstart = 0
-        rstop = 0
+        rstop = rpos[1]
         lstop = width+lpos[1]
+        self.stdscr.addstr(0, 1, 'left file', infocolor)
       # otherwise the boundary is still in the middle
       else:
+        self.stdscr.addstr(0, 1, 'left file', infocolor)
+        self.stdscr.addstr(0, width-11, 'right file', infocolor)
         rstop = width-rstart+rpos[1]
+    else:
+      self.stdscr.addstr(0, 1, 'left file', infocolor)
+      self.stdscr.addstr(0, width-11, 'right file', infocolor)
     # the default color is standard color
     color = curses.color_pair(0)
-    # clear the screen and add lines
-    self.stdscr.erase()
-    for i in range(height):
-      if dohighlight and i+lpos[0] >= 0 and i+rpos[0] >= 0:
+    # add lines
+    for i in range(1, height):
+      if dohighlight:
         # if the strings match (without leading/trailing space)
         if i+lpos[0] < len(lhs) and i+rpos[0] < len(rhs) and \
               lhs[lpos[0]+i].strip() == rhs[rpos[0]+i].strip():
@@ -194,11 +206,17 @@ class DiffWindow:
         # otherwise standard color
         else: color = curses.color_pair(0)
       # draw lhs if we have a row here
-      if i+lpos[0] >= 0 and i+lpos[0] < len(lhs):
-        self.stdscr.addstr(i, 0, lhs[lpos[0]+i][lpos[1]:lstop], color)
+      if lstop != lpos[1]:
+        if i+lpos[0] < len(lhs):
+          self.stdscr.addstr(i, 0, lhs[lpos[0]+i][lpos[1]:lstop], color)
+        elif i+lpos[0] == len(lhs):
+          self.stdscr.addstr(i, 1, '<End of file>', infocolor)
       # draw rhs if we have a row here
-      if i+rpos[0] >= 0 and i+rpos[0] < len(rhs):
-        self.stdscr.addstr(i, rstart, rhs[rpos[0]+i][rpos[1]:rstop], color)
+      if rstop != rpos[1]:
+        if i+rpos[0] < len(rhs):
+          self.stdscr.addstr(i, rstart, rhs[rpos[0]+i][rpos[1]:rstop], color)
+        elif i+rpos[0] == len(rhs):
+          self.stdscr.addstr(i, width-14, '<End of file>', infocolor)
     self.stdscr.refresh()
     return height, width
 
@@ -261,6 +279,8 @@ class DiffWindow:
       elif ch == 43 and paneshmt < lastwidth//2 + 2: paneshmt += 1
       # minus key to shift pane separator left
       elif ch == 45 and paneshmt > -(lastwidth//2 - 2): paneshmt -= 1
+      # equal key to reset pane shift
+      elif ch == 61: paneshmt = 0
       # reset positions
       elif ch == curses.KEY_HOME:
         if not singlescroll: lpos, rpos = [-1,0], [-1,0]
@@ -347,6 +367,7 @@ if __name__ == '__main__':
     print('Toggle left/right pane lock:       space')
     print('Toggle left/right pane scrolling:  tab')
     print('Move pane separator left/right:    +/-')
+    print('Reset pane separator shift    :    =')
     sys.exit(0)
   lhs, rhs = [], []
   with open(sys.argv[1]) as infile:
