@@ -214,13 +214,13 @@ class DiffWindow:
         if i+lpos[0] < len(lhs):
           self.stdscr.addstr(i, 0, lhs[lpos[0]+i][lpos[1]:lstop], color)
         elif i+lpos[0] == len(lhs):
-          self.stdscr.addstr(i, 1, '<End of file>', infocolor)
+          self.stdscr.addstr(i, 1, 'END', infocolor)
       # draw rhs if we have a row here
       if rstop != rpos[1]:
         if i+rpos[0] < len(rhs):
           self.stdscr.addstr(i, rstart, rhs[rpos[0]+i][rpos[1]:rstop], color)
         elif i+rpos[0] == len(rhs):
-          self.stdscr.addstr(i, width-14, '<End of file>', infocolor)
+          self.stdscr.addstr(i, width-14, 'END', infocolor)
     self.stdscr.refresh()
     return height, width
 
@@ -397,21 +397,21 @@ class DiffWindow:
       # clear the screen
       self.stdscr.erase()
       # add the title
-      self.stdscr.addstr(0, 0, title, titlecolor)
+      self.stdscr.addstr(0, 0, title[:width], titlecolor)
       # track the line number we are printing to
       linenum = 1
       for section in body:
         # print all lines in a section of the body
         for line in section:
           linenum += 1
-          self.stdscr.addstr(linenum, 4, line, itemcolor)
+          self.stdscr.addstr(linenum, 4, line[:width-4], itemcolor)
         # separate body sections by a newline
         linenum += 1
       # separate body from remainder with another newline
       linenum += 1
       if err:
         # print an error message if we have one, add 2 lines
-        self.stdscr.addstr(linenum, 4, err, errorcolor)
+        self.stdscr.addstr(linenum, 4, err[:width-4], errorcolor)
         linenum += 2
       # track the actual top line of the choices
       actualtop = linenum
@@ -423,7 +423,7 @@ class DiffWindow:
         if i >= topline:
           # set the color to active if this is our highlight position
           color = activecolor if i == hpos else itemcolor
-          self.stdscr.addstr(linenum, 4, line, color)
+          self.stdscr.addstr(linenum, 4, line[:width-4], color)
           linenum += 1
       # set the cursor according to the argument and refresh the screen
       curses.curs_set(curs)

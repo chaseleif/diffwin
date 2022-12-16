@@ -15,7 +15,6 @@ if __name__ == '__main__':
       lhs = infile.readlines()
     with open(sys.argv[2]) as infile:
       rhs = infile.readlines()
-    # intended usage
     with DiffWindow() as win:
       win.showdiff(lhs, rhs)
   else:
