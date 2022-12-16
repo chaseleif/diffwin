@@ -368,6 +368,7 @@ class DiffWindow:
     titlecolor = curses.color_pair(2) | curses.A_BOLD
     itemcolor = curses.color_pair(1)
     activecolor = curses.color_pair(1) | curses.A_BOLD
+    errorcolor = curses.color_pair(3) | curses.A_BOLD
     hpos = 0
     topline = 0
     while True:
@@ -383,7 +384,7 @@ class DiffWindow:
         linenum += 1
       linenum += 1
       if err:
-        self.stdscr.addstr(linenum, 4, err, curses.color_pair(3) | curses.A_BOLD)
+        self.stdscr.addstr(linenum, 4, err, errorcolor)
         linenum += 2
       actualtop = linenum
       for i, line in enumerate(choices):
@@ -405,13 +406,15 @@ class DiffWindow:
           topline = len(choices) - height + actualtop
           hpos = len(choices) - 1
       elif ch == curses.KEY_UP:
-        if hpos > 0: hpos -= 1
-        if actualtop + hpos - topline < actualtop:
-          topline -= 1
+        if hpos > 0:
+          hpos -= 1
+          if actualtop + hpos - topline < actualtop:
+            topline -= 1
       elif ch == curses.KEY_DOWN:
-        if hpos < len(choices) - 1: hpos += 1
-        if actualtop + hpos - topline == height:
-          topline += 1
+        if hpos < len(choices) - 1:
+          hpos += 1
+          if actualtop + hpos - topline == height:
+            topline += 1
       elif ch == curses.KEY_PPAGE and hpos > 0:
         hpos -= 4
         if hpos - topline < 0:
@@ -432,27 +435,29 @@ class DiffWindow:
     This method is used to print a file selection menu
   '''
   def filemenu(self, title=''):
-    cwd = os.getcwd()
-    path = cwd
+    path = os.getcwd()
     error = None
+    body = [['Select a text file'], ['Path: ' + path]]
     while True:
       names = ['../'] if path != '/' else []
       names += [name for name in os.listdir(path)]
-      body = [['Select a text file', '', 'Path: ' + path]]
-      ch = self.showmenu(title=title, body = body, err = error, choices = names)
+      body[-1][-1] = 'Path: ' + path
+      ch = self.showmenu(title=title, body=body, err=error, choices=names)
       if error:
         error = None
       if names[ch] == '../' or os.path.isdir(path+'/'+names[ch]):
         if names[ch] == '../':
           path = '/'.join(path.split('/')[:-1])
           if path == '': path = '/'
-        elif path == '/': path += names[ch]
-        elif names[ch] == cwd: path = cwd
         else:
-          path += '/'+names[ch]
-        if not os.access(path, os.R_OK):
-          error = 'Error reading directory \"' + path + '\"'
-          path = cwd
+          testpath = path + names[ch] if path == '/' else \
+                                        path + '/' + names[ch]
+          try:
+            os.listdir(testpath)
+          except:
+            error = 'Error reading directory \"' + testpath + '\"'
+            continue
+          path = testpath
       else:
         try:
           with open(path+'/'+names[ch]) as infile:
@@ -465,15 +470,14 @@ class DiffWindow:
 
     Print command information
   '''
-  def commands(self):
-    title = 'DiffWindow - a Python curses script to compare 2 text files'
+  def commands(self, title=''):
     controls = [['Commands available while the diff view is active:'],
-                ['Quit:                              escape, q, Q',
-                  'Toggle match highlighting:         d, D, h, H',
-                  'Toggle left/right pane lock:       space',
+                 ['                            Quit:  escape, q, Q',
+                  '       Toggle match highlighting:  d, D, h, H',
+                  '     Toggle left/right pane lock:  space',
                   'Toggle left/right pane scrolling:  tab',
-                  'Move pane separator left/right:    +/-',
-                  'Reset pane separator shift    :    =']]
+                  '  Move pane separator left/right:  +/-',
+                  '      Reset pane separator shift:  =']]
     choices = ['Press the any key to return to the main menu . . . ']
     self.showmenu(title=title,
                   body=controls,
@@ -509,19 +513,18 @@ class DiffWindow:
     lhs, rhs = None, None
     while ch != choices.index('Quit'):
       ch = self.showmenu(title=title, body=body, err=error, choices=choices)
-      if error:
-        error=None
+      error=None
       if legend[ch] == 'lhs':
-        lhs = self.filemenu()
+        lhs = self.filemenu(title=title)
       elif legend[ch] == 'rhs':
-        rhs = self.filemenu()
+        rhs = self.filemenu(title=title)
       elif legend[ch] == 'diff':
         if not lhs or not rhs:
           error = 'Left- and Right- side files must be selected first!'
         else:
           self.showdiff(lhs, rhs)
       elif legend[ch] == 'commands':
-        self.commands()
+        self.commands(title=title)
 
 '''
 When ran as a script will diff 2 files
