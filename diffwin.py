@@ -220,7 +220,7 @@ class DiffWindow:
         if i+rpos[0] < len(rhs):
           self.stdscr.addstr(i, rstart, rhs[rpos[0]+i][rpos[1]:rstop], color)
         elif i+rpos[0] == len(rhs):
-          self.stdscr.addstr(i, width-14, 'END', infocolor)
+          self.stdscr.addstr(i, width-4, 'END', infocolor)
     self.stdscr.refresh()
     return height, width
 
