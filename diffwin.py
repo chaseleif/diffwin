@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import curses, sys
+import curses, os, sys
 
 '''
     DiffWindow - a Python curses script to compare 2 text files
@@ -109,10 +109,12 @@ class DiffWindow:
     curses.start_color()
     # we can use pair numbers from 1 ... (0 is standard)
     # COLOR_ BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, WHITE, YELLOW
-    # This will be for green text on black
+    # This will be for standard text
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    # This will be for black text on green
+    # This will be for title text
     curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    # This will be error text
+    curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
     # suppress echo of keypresses
     curses.noecho()
     # immediately respond to keypresses
@@ -276,9 +278,11 @@ class DiffWindow:
       # toggle line match highlight with d, D, h, or H (for diff/highlight)
       elif ch in [68, 72, 100, 104]: dohighlight = not dohighlight
       # plus key to shift pane separator right
-      elif ch == 43 and paneshmt < lastwidth//2 + 2: paneshmt += 1
+      elif ch == 43:
+        if lastwidth//2 - 10 + paneshmt < self.lwidth - lpos[1]: paneshmt += 1
       # minus key to shift pane separator left
-      elif ch == 45 and paneshmt > -(lastwidth//2 - 2): paneshmt -= 1
+      elif ch == 45:
+        if lastwidth//2 + paneshmt < self.rwidth - lpos[1]: paneshmt -= 1
       # equal key to reset pane shift
       elif ch == 61: paneshmt = 0
       # reset positions
@@ -353,30 +357,188 @@ class DiffWindow:
                                                     dohighlight, paneshmt)
       ch = self.stdscr.getch()
 
+  '''
+  showmenu()
+
+    This method is used to print a text menu
+  '''
+  def showmenu(self,
+                title='', body=[], err=None, choices=[],
+                infobox=False, curs=0):
+    titlecolor = curses.color_pair(2) | curses.A_BOLD
+    itemcolor = curses.color_pair(1)
+    activecolor = curses.color_pair(1) | curses.A_BOLD
+    hpos = 0
+    topline = 0
+    while True:
+      height, width = self.stdscr.getmaxyx()
+      # clear the screen
+      self.stdscr.erase()
+      self.stdscr.addstr(0, 0, title, titlecolor)
+      linenum = 1
+      for section in body:
+        for line in section:
+          linenum += 1
+          self.stdscr.addstr(linenum, 4, line, itemcolor)
+        linenum += 1
+      linenum += 1
+      if err:
+        self.stdscr.addstr(linenum, 4, err, curses.color_pair(3) | curses.A_BOLD)
+        linenum += 2
+      actualtop = linenum
+      for i, line in enumerate(choices):
+        if linenum == height: break
+        if i >= topline:
+          color = activecolor if i == hpos else itemcolor
+          self.stdscr.addstr(linenum, 4, line, color)
+          linenum += 1
+      curses.curs_set(curs)
+      self.stdscr.refresh()
+      ch = self.stdscr.getch()
+      curses.curs_set(0)
+      if infobox: return
+      elif ch == curses.KEY_HOME:
+        hpos = 0
+        topline = 0
+      elif ch == curses.KEY_END:
+        if actualtop + len(choices) > height:
+          topline = len(choices) - height + actualtop
+          hpos = len(choices) - 1
+      elif ch == curses.KEY_UP:
+        if hpos > 0: hpos -= 1
+        if actualtop + hpos - topline < actualtop:
+          topline -= 1
+      elif ch == curses.KEY_DOWN:
+        if hpos < len(choices) - 1: hpos += 1
+        if actualtop + hpos - topline == height:
+          topline += 1
+      elif ch == curses.KEY_PPAGE and hpos > 0:
+        hpos -= 4
+        if hpos - topline < 0:
+          topline = hpos
+        if hpos < 0:
+          hpos = 0
+          topline = 0
+      elif ch == curses.KEY_NPAGE:
+        hpos += 4
+        if hpos >= len(choices) - 1: hpos = len(choices) - 1
+        if actualtop + hpos - topline >= height:
+          topline += actualtop + hpos - topline - height + 1
+      elif ch in [curses.KEY_ENTER, 10, 13]: return hpos
+
+  '''
+  filemenu()
+
+    This method is used to print a file selection menu
+  '''
+  def filemenu(self, title=''):
+    cwd = os.getcwd()
+    path = cwd
+    error = None
+    while True:
+      names = ['../'] if path != '/' else []
+      names += [name for name in os.listdir(path)]
+      body = [['Select a text file', '', 'Path: ' + path]]
+      ch = self.showmenu(title=title, body = body, err = error, choices = names)
+      if error:
+        error = None
+      if names[ch] == '../' or os.path.isdir(path+'/'+names[ch]):
+        if names[ch] == '../':
+          path = '/'.join(path.split('/')[:-1])
+          if path == '': path = '/'
+        elif path == '/': path += names[ch]
+        elif names[ch] == cwd: path = cwd
+        else:
+          path += '/'+names[ch]
+        if not os.access(path, os.R_OK):
+          error = 'Error reading directory \"' + path + '\"'
+          path = cwd
+      else:
+        try:
+          with open(path+'/'+names[ch]) as infile:
+            contents = infile.readlines()
+            return contents
+        except:
+          error = 'Error opening \"' + path + '/' + names[ch] + '\"'
+  '''
+  commands()
+
+    Print command information
+  '''
+  def commands(self):
+    title = 'DiffWindow - a Python curses script to compare 2 text files'
+    controls = [['Commands available while the diff view is active:'],
+                ['Quit:                              escape, q, Q',
+                  'Toggle match highlighting:         d, D, h, H',
+                  'Toggle left/right pane lock:       space',
+                  'Toggle left/right pane scrolling:  tab',
+                  'Move pane separator left/right:    +/-',
+                  'Reset pane separator shift    :    =']]
+    choices = ['Press the any key to return to the main menu . . . ']
+    self.showmenu(title=title,
+                  body=controls,
+                  choices=choices,
+                  infobox=True,
+                  curs=2)
+
+  '''
+  mainmenu()
+
+    This is the main menu for the menu-driven interface
+  '''
+  def mainmenu(self):
+    # confirm class usage
+    try:
+      if not self.havescr: self.initscr()
+    except AttributeError:
+      if self.unsafe: self.initscr()
+      else:
+        raise AssertionError('unsafe is not true and curses not initialized')
+    title = 'DiffWindow - a Python curses script to compare 2 text files'
+    body = [['Copyright (C) 2022 Chase Phelps',
+              'Provided under the GNU GPL v3 license'],
+            ['Choose an option from the menu below:']]
+    choices = ['Select the left-hand side file',
+                'Select the right-hand side file',
+                'Show the diff between the files',
+                'Show available commands for diff view',
+                'Quit']
+    legend = ['lhs','rhs','diff','commands','quit']
+    ch = -1
+    error = None
+    lhs, rhs = None, None
+    while ch != choices.index('Quit'):
+      ch = self.showmenu(title=title, body=body, err=error, choices=choices)
+      if error:
+        error=None
+      if legend[ch] == 'lhs':
+        lhs = self.filemenu()
+      elif legend[ch] == 'rhs':
+        rhs = self.filemenu()
+      elif legend[ch] == 'diff':
+        if not lhs or not rhs:
+          error = 'Left- and Right- side files must be selected first!'
+        else:
+          self.showdiff(lhs, rhs)
+      elif legend[ch] == 'commands':
+        self.commands()
+
 '''
 When ran as a script will diff 2 files
 '''
 if __name__ == '__main__':
-  if len(sys.argv) != 3:
-    print('DiffWindow - a Python curses script to compare 2 text files\n')
-    print('Usage:')
-    print('python3',sys.argv[0],'file1 file2\n')
-    print('Controls:')
-    print('Quit:                              escape, q, Q')
-    print('Toggle match highlighting:         d, D, h, H')
-    print('Toggle left/right pane lock:       space')
-    print('Toggle left/right pane scrolling:  tab')
-    print('Move pane separator left/right:    +/-')
-    print('Reset pane separator shift    :    =')
-    sys.exit(0)
-  lhs, rhs = [], []
-  with open(sys.argv[1]) as infile:
-    lhs = infile.readlines()
-  with open(sys.argv[2]) as infile:
-    rhs = infile.readlines()
-  # intended usage
-  with DiffWindow() as win:
-    win.showdiff(lhs, rhs)
+  if len(sys.argv) == 3:
+    lhs, rhs = [], []
+    with open(sys.argv[1]) as infile:
+      lhs = infile.readlines()
+    with open(sys.argv[2]) as infile:
+      rhs = infile.readlines()
+    # intended usage
+    with DiffWindow() as win:
+      win.showdiff(lhs, rhs)
+  else:
+    with DiffWindow() as win:
+      win.mainmenu()
   # class usage
   #win = DiffWindow(unsafe=True)
   #win.initscr() # optional, called automatically in showdiff if unsafe=True
