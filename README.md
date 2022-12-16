@@ -1,4 +1,4 @@
-# DiffWindow - a Python curses script to compare 2 text files
+# DiffWindow
 
 ### a Python curses script to compare 2 text files
 
