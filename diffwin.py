@@ -23,12 +23,24 @@ import curses, os, sys
 '''
   DiffWindow
   ___________
-  A class to be used in the manner "with DiffWindow() as win:"
-    this usage keeps curses from messing up the terminal on ctrl-c/etc.
   An implementation of curses for side-by-side file comparison
-  Takes 2 lists of strings.
-    so, lhs = [line.strip() for line in lhsfile.readlines()]
-        rhs = [line.strip() for line in rhsfile.readlines()]
+
+  A class to be used in the manner "with DiffWindow() as win:"
+    this usage keeps curses from messing up the terminal on exceptions/etc.
+
+  Alternate usage, instantiating a class, is win = DiffWindow(unsafe=True)
+    (the method which initializes curses is initscr)
+    (the method which restores the shell is stopscr)
+    initscr will be called automatically when needd if unsafe=True
+    stopscr will be called on __del__
+
+  The "main" method, showdiff, takes 2 lists of strings like:
+    lhs = [line.rstrip() for line in lhsfile.readlines()]
+    rhs = [line.rstrip() for line in rhsfile.readlines()]
+
+  Alternatively, this script can run as a menu-driven script:
+    with DiffWindow() as win:
+      win.mainmenu()
   ___________
   Normal navigation keys allow scrolling:
     up, down, left, right, pgup, pgdown, home, end
@@ -46,24 +58,14 @@ import curses, os, sys
   When highlighting is enabled lhs/rhs lines that are the same
     **and are on the same level of the screen**
     will be highlighted
-  ___________
-  Example Usage:
-    from diffwin import diffWindow
-    def split_display(lhs = [''], rhs = ['']):
-      with SplitWindow() as win:
-        with open('curse.py','r') as infile:
-          lhs = [line.strip() for line in infile.readlines()]
-        with open('curse2.py','r') as infile:
-          rhs = [line.strip() for line in infile.readlines()]
-        win.listdiff(lhs,rhs)
 '''
 
 class DiffWindow:
   '''
   __init__
 
-    set unsafe flag which can allow usage without enter/exit
-    The intended usage is as described above and in the name==__main__ usage
+    Set unsafe flag to allow usage without enter/exit
+    The intended usage is as described above and in the "if name == __main__"
   '''
   def __init__(self, unsafe=False): self.unsafe = unsafe
 
@@ -88,7 +90,7 @@ class DiffWindow:
   '''
   __del__
 
-    Delete for an improper usage
+    Ensure curses has been town down
   '''
   def __del__(self):
     try:
@@ -109,11 +111,11 @@ class DiffWindow:
     curses.start_color()
     # we can use pair numbers from 1 ... (0 is standard)
     # COLOR_ BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, WHITE, YELLOW
-    # This will be for standard text
+    # this will be for standard text
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    # This will be for title text
+    # this will be for title text
     curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    # This will be error text
+    # this will be error text
     curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
     # suppress echo of keypresses
     curses.noecho()
@@ -143,12 +145,12 @@ class DiffWindow:
   '''
   draw(lhs, lpos, rhs, rpos, dohighlight)
 
-    This method repaints the screen
+    This method repaints the screen for the showdiff function
     lhs and rhs are lists of strings
     lpos and rpos determines which row/col is the top left
-    the screen is divided vertically into 2 segments
-    there is a small gap between lhs / rhs for readability
-    the screen is cleared, strings added to screen, then refreshed
+    The screen is divided vertically into 2 segments
+    There is a small gap between lhs / rhs for readability
+    The screen is cleared, strings added to screen, then refreshed
   '''
   def draw(self, lhs, lpos, rhs, rpos, dohighlight, paneshmt):
     # clear the screen
@@ -225,7 +227,7 @@ class DiffWindow:
   '''
   showdiff(lhs, rhs)
 
-    This is the main driver function for this class
+    This is the main driver function for the file diff display
     Takes 2 lists of strings, lhs and rhs
 
     Returns when the escape, q, or Q key has been pressed
@@ -238,10 +240,10 @@ class DiffWindow:
       if self.unsafe: self.initscr()
       else:
         raise AssertionError('unsafe is not true and curses not initialized')
-    # remove empty lines from lhs / rhs
+    # remove empty lines and trailing whitespace from lhs / rhs
     lhs = [line.rstrip() for line in lhs if line.strip() != '']
     rhs = [line.rstrip() for line in rhs if line.strip() != '']
-    # get max columns to prevent scrolling too far right
+    # get column length for lhs and rhs (max of any element)
     self.lwidth = 0
     for row in lhs:
       if len(row) > self.lwidth: self.lwidth = len(row)
@@ -249,7 +251,7 @@ class DiffWindow:
     for row in rhs:
       if len(row) > self.rwidth: self.rwidth = len(row)
     # track top left 'coordinate' of the text in the lists
-    # the l/rpos is the startomg row + col to display
+    # the l/rpos is the starting row + col to display
     lpos = [0,0] # lpos[0] is starting row
     rpos = [0,0] # rpos[1] is starting col
     # track the last known height/width as the window could be resized
@@ -268,9 +270,6 @@ class DiffWindow:
     while ch not in [27, 81, 113]:
       # repaint the screen if we do one of these conditions
       repaint = True
-      '''
-        Commands
-      '''
       # the space key to toggle independent scrolling
       if ch == 32: singlescroll = not singlescroll
       # the tab key to toggle whether lhs is active (otherwise rhs)
@@ -350,7 +349,7 @@ class DiffWindow:
             if rpos[1] < self.rwidth - lastwidth//2 + 2 + paneshmt:
               rpos[1] += 1
       else:
-        # If we didn't change the pos then don't repaint
+        # if we didn't change the pos then don't repaint
         repaint = False
       if repaint: lastheight, lastwidth = self.draw(lhs, lpos,
                                                     rhs, rpos,
@@ -360,61 +359,102 @@ class DiffWindow:
   '''
   showmenu()
 
-    This method is used to print a text menu
+    This method is used by other menus to print a text menu
+
+    The title is drawn on the first line
+    An empty line separates the title from the body
+    The body is a list of lists of strings
+    Each is separated by a line
+    The error, if present, is then printed in error color
+    The remaining lines are "choice" lines which can be scrolled
+    The current selection will be highlighted
+
+    The user makes their selection with navigation keys
+    When enter is pressed, the corresponding index of choices is returned
+
+    If infobox is True this method will return on the first keypress
+
+    curses.curs_set is set with the curs parameter
+      0 is hidden
+      1 is (possibly) an underscore/line
+      2 is (possibly) a block
   '''
   def showmenu(self,
-                title='', body=[], err=None, choices=[],
+                title='', body=[[]], err=None, choices=[],
                 infobox=False, curs=0):
+    # set colors to be used
     titlecolor = curses.color_pair(2) | curses.A_BOLD
     itemcolor = curses.color_pair(1)
     activecolor = curses.color_pair(1) | curses.A_BOLD
     errorcolor = curses.color_pair(3) | curses.A_BOLD
+    # the highlight position (row of choices)
     hpos = 0
+    # the top line (row in choices) that is being displayed
     topline = 0
     while True:
+      # get the current dimensions
       height, width = self.stdscr.getmaxyx()
       # clear the screen
       self.stdscr.erase()
+      # add the title
       self.stdscr.addstr(0, 0, title, titlecolor)
+      # track the line number we are printing to
       linenum = 1
       for section in body:
+        # print all lines in a section of the body
         for line in section:
           linenum += 1
           self.stdscr.addstr(linenum, 4, line, itemcolor)
+        # separate body sections by a newline
         linenum += 1
+      # separate body from remainder with another newline
       linenum += 1
       if err:
+        # print an error message if we have one, add 2 lines
         self.stdscr.addstr(linenum, 4, err, errorcolor)
         linenum += 2
+      # track the actual top line of the choices
       actualtop = linenum
+      # i is zero indexed matching hpos
       for i, line in enumerate(choices):
+        # we cannot go beyond height if choices is a long list
         if linenum == height: break
+        # print this line
         if i >= topline:
+          # set the color to active if this is our highlight position
           color = activecolor if i == hpos else itemcolor
           self.stdscr.addstr(linenum, 4, line, color)
           linenum += 1
+      # set the cursor according to the argument and refresh the screen
       curses.curs_set(curs)
       self.stdscr.refresh()
+      # get our response, reset the cursor and process the response
       ch = self.stdscr.getch()
       curses.curs_set(0)
+      # this argument indicates we return immediately on a keypress
       if infobox: return
+      # go to the top
       elif ch == curses.KEY_HOME:
         hpos = 0
         topline = 0
+      # go to the bottom
       elif ch == curses.KEY_END:
         if actualtop + len(choices) > height:
           topline = len(choices) - height + actualtop
           hpos = len(choices) - 1
+      # go up
       elif ch == curses.KEY_UP:
         if hpos > 0:
           hpos -= 1
           if actualtop + hpos - topline < actualtop:
             topline -= 1
+      # go down
       elif ch == curses.KEY_DOWN:
         if hpos < len(choices) - 1:
           hpos += 1
           if actualtop + hpos - topline == height:
             topline += 1
+      # jump up
       elif ch == curses.KEY_PPAGE and hpos > 0:
         hpos -= 4
         if hpos - topline < 0:
@@ -422,44 +462,67 @@ class DiffWindow:
         if hpos < 0:
           hpos = 0
           topline = 0
+      # jump down
       elif ch == curses.KEY_NPAGE:
         hpos += 4
         if hpos >= len(choices) - 1: hpos = len(choices) - 1
         if actualtop + hpos - topline >= height:
           topline += actualtop + hpos - topline - height + 1
+      # on enter we return our highlighted position
       elif ch in [curses.KEY_ENTER, 10, 13]: return hpos
 
   '''
   filemenu()
 
     This method is used to print a file selection menu
+    The navigation begins from the current working directory
+    The choices are the contents of the currently selected directory
+    A file opened must be a text file
+
+    Returns -> the file.readlines() list
   '''
   def filemenu(self, title=''):
+    # the path starts at the current working directory
     path = os.getcwd()
     error = None
     body = [['Select a text file'], ['Path: ' + path]]
     while True:
+      # give an option to go up a level unless we are at the root
       names = ['../'] if path != '/' else []
+      # add the contents of the directory
       names += [name for name in os.listdir(path)]
-      body[-1][-1] = 'Path: ' + path
+      # get the response
       ch = self.showmenu(title=title, body=body, err=error, choices=names)
-      if error:
-        error = None
+      # reset the error message
+      error = None
+      # if we selected to go up or our selection is a subdirectory
       if names[ch] == '../' or os.path.isdir(path+'/'+names[ch]):
+        # if we chose to go up remove the last directory from the path
         if names[ch] == '../':
           path = '/'.join(path.split('/')[:-1])
+          # the root will become an empty string
           if path == '': path = '/'
+        # we chose a directory from our path
         else:
+          # test to see if we can get a list of the directory contents
           testpath = path + names[ch] if path == '/' else \
                                         path + '/' + names[ch]
           try:
             os.listdir(testpath)
           except:
+            # if we can't read the directory set an error string and continue
             error = 'Error reading directory \"' + testpath + '\"'
             continue
+          # if we could read the directory set the path
           path = testpath
+        # update the path in the body text
+        body[-1][-1] = 'Path: ' + path
+      # our selection was a file
       else:
+        # try to read the file
         try:
+          # reading the file will fail without permissions
+          # or if the file is not a text file
           with open(path+'/'+names[ch]) as infile:
             contents = infile.readlines()
             return contents
@@ -498,36 +561,51 @@ class DiffWindow:
       if self.unsafe: self.initscr()
       else:
         raise AssertionError('unsafe is not true and curses not initialized')
+    # the title for each window
     title = 'DiffWindow - a Python curses script to compare 2 text files'
+    # the body text
     body = [['Copyright (C) 2022 Chase Phelps',
               'Provided under the GNU GPL v3 license'],
             ['Choose an option from the menu below:']]
+    # the choices
     choices = ['Select the left-hand side file',
                 'Select the right-hand side file',
                 'Show the diff between the files',
                 'Show available commands for diff view',
                 'Quit']
+    # a legend of choices to allow more descriptive comparison
     legend = ['lhs','rhs','diff','commands','quit']
+    # initialize our variables
     ch = -1
     error = None
     lhs, rhs = None, None
+    # while quit is not chosen
     while ch != choices.index('Quit'):
+      # get a choice
       ch = self.showmenu(title=title, body=body, err=error, choices=choices)
       error=None
+      # open a file to set lhs
       if legend[ch] == 'lhs':
         lhs = self.filemenu(title=title)
+      # open a file to set rhs
       elif legend[ch] == 'rhs':
         rhs = self.filemenu(title=title)
+      # show the diff of lhs and rhs
       elif legend[ch] == 'diff':
         if not lhs or not rhs:
           error = 'Left- and Right- side files must be selected first!'
         else:
           self.showdiff(lhs, rhs)
+      # show the command information
       elif legend[ch] == 'commands':
         self.commands(title=title)
 
 '''
-When ran as a script will diff 2 files
+__name__ == __main__
+  When len(argv) == 3, attempt to read -> lhs=argv[1], rhs=argv[2]
+  Otherwise start the main menu
+
+  Usage of DiffWin class is demonstrated below
 '''
 if __name__ == '__main__':
   if len(sys.argv) == 3:
