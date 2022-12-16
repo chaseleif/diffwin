@@ -22,12 +22,14 @@ if __name__ == '__main__':
     with DiffWindow() as win:
       win.mainmenu()
 ```
+
 ___
 ## Menu commands:
 
 Navigation:  up, down, left, right, pgup, pgdown, home, end  
 Quit/cancel: escape, q, Q  
 
+___
 ## Diff window commands:
 
 Toggle left and right pane lock:   space  
@@ -36,6 +38,7 @@ Shift pane separator left/right:   +, -
 Reset pane separator location:     =  
 Toggle matching line highlight:    d, D, h, H  
 
+___
 ## Further information:
 
 Read the comments for further information and examples  
