@@ -31,7 +31,7 @@ import curses, os, sys
   Alternate usage, instantiating a class, is win = DiffWindow(unsafe=True)
     (the method which initializes curses is initscr)
     (the method which restores the shell is stopscr)
-    initscr will be called automatically when needd if unsafe=True
+    initscr will be called automatically when needed if unsafe=True
     stopscr will be called on __del__
 
   The "main" method, showdiff, takes 2 lists of strings like:
@@ -431,6 +431,9 @@ class DiffWindow:
       # get our response, reset the cursor and process the response
       ch = self.stdscr.getch()
       curses.curs_set(0)
+      # allow to return without making a selection:
+      # escape = 27, 'Q'=81, 'q'=113
+      if ch in [27, 81, 113]: return None
       # this argument indicates we return immediately on a keypress
       if infobox: return
       # go to the top
@@ -493,6 +496,8 @@ class DiffWindow:
       names += [name for name in os.listdir(path)]
       # get the response
       ch = self.showmenu(title=title, body=body, err=error, choices=names)
+      # allow to return without opening a file:
+      if ch is None: return None, None
       # reset the error message
       error = None
       # if we selected to go up or our selection is a subdirectory
@@ -525,7 +530,7 @@ class DiffWindow:
           # or if the file is not a text file
           with open(path+'/'+names[ch]) as infile:
             contents = infile.readlines()
-            return contents
+            return contents, names[ch]
         except:
           error = 'Error opening \"' + path + '/' + names[ch] + '\"'
   '''
@@ -583,13 +588,27 @@ class DiffWindow:
     while ch != choices.index('Quit'):
       # get a choice
       ch = self.showmenu(title=title, body=body, err=error, choices=choices)
+      # allow to quit on escape, q, or Q:
+      if ch is None: break
       error=None
       # open a file to set lhs
       if legend[ch] == 'lhs':
-        lhs = self.filemenu(title=title)
+        ret, name = self.filemenu(title=title)
+        if lhs is None and ret is not None:
+          choices[legend.index('lhs')] += ' (set to \"' + name + '\")'
+        elif ret is None:
+          choices[legend.index('lhs')] = \
+              choices[legend.index('lhs')].split(' (')[0]
+        lhs = ret
       # open a file to set rhs
       elif legend[ch] == 'rhs':
-        rhs = self.filemenu(title=title)
+        ret, name = self.filemenu(title=title)
+        if rhs is None and ret is not None:
+          choices[legend.index('rhs')] += ' (set to \"' + name + '\")'
+        elif ret is None:
+          choices[legend.index('rhs')] = \
+              choices[legend.index('rhs')].split(' (')[0]
+        rhs = ret
       # show the diff of lhs and rhs
       elif legend[ch] == 'diff':
         if not lhs or not rhs:
