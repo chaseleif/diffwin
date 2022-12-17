@@ -75,9 +75,7 @@ class DiffWindow:
     We init curses, get a screen, and set options
     Returns self for use with the listdiff() function
   '''
-  def __enter__(self):
-    self.unsafe = False
-    return self.initscr()
+  def __enter__(self): return self.initscr()
 
   '''
   __exit__
