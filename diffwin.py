@@ -165,8 +165,7 @@ class DiffWindow:
     # starting column for lhs -vs- rhs, lhs will always start at column 0
     rstart = width//2 + 2
     # don't separate them by too much if we have extra space
-    if rstart > self.lwidth + 4:
-      rstart = self.lwidth + 4
+    if rstart > self.lwidth + 4: rstart = self.lwidth + 4
     # we use the l and rstop to determine ending index of printed string
     # lhs would stop 4 chars before rstart
     lstop = rstart - 4
@@ -250,11 +249,9 @@ class DiffWindow:
     rhs = [line.rstrip() for line in rhs if line.strip() != '']
     # get column length for lhs and rhs (max of any element)
     self.lwidth = 0
-    for row in lhs:
-      self.lwidth = max(len(row),self.lwidth)
+    for row in lhs: self.lwidth = max(len(row),self.lwidth)
     self.rwidth = 0
-    for row in rhs:
-      self.rwidth = max(len(row),self.rwidth)
+    for row in rhs: self.rwidth = max(len(row),self.rwidth)
     # track top left 'coordinate' of the text in the lists
     # the l/rpos is the starting row + col to display
     lpos = [0,0] # lpos[0] is starting row
@@ -265,6 +262,8 @@ class DiffWindow:
     singlescroll = False
     # side toggle for independent scrolling
     leftscroll = True
+    scroll = lambda x: not singlescroll or leftscroll if x=='left' \
+                    else not singlescroll or not leftscroll
     # toggle for whether to highlight matching lines
     dohighlight = True
     # shift amount for pane boundary, division between lhs/rhs views
@@ -283,81 +282,69 @@ class DiffWindow:
       elif ch in [68, 72, 100, 104]: dohighlight = not dohighlight
       # plus key to shift pane separator right
       elif ch == 43:
-        if lastwidth//2 - 10 + paneshmt < self.lwidth - lpos[1]: paneshmt += 1
+        if lastwidth//2 - 5 > paneshmt : paneshmt += 1
       # minus key to shift pane separator left
       elif ch == 45:
-        if lastwidth//2 + paneshmt < self.rwidth - lpos[1]: paneshmt -= 1
+        if 2 - lastwidth//2  < paneshmt : paneshmt -= 1
       # equal key to reset pane shift
       elif ch == 61: paneshmt = 0
       # reset positions
       elif ch == curses.KEY_HOME:
-        if not singlescroll: lpos, rpos = [-1,0], [-1,0]
-        elif leftscroll: lpos = [-1,0]
-        else: rpos = [-1,0]
+        if scroll('left'): lpos = [-1,0]
+        if scroll('right'): rpos = [-1,0]
       # go to the bottom
       elif ch == curses.KEY_END:
-        if not singlescroll or leftscroll:
-          # fit our maxheight in the last known height
-          if lastheight < len(lhs):
-            lpos[0] = len(lhs) - lastheight + 1
-        if not singlescroll or not leftscroll:
-          if lastheight < len(rhs):
-            rpos[0] = len(rhs) - lastheight + 1
+        # fit our maxheight in the last known height
+        if scroll('left') and lastheight < len(lhs):
+          lpos[0] = len(lhs) - lastheight + 1
+        if scroll('right') and lastheight < len(rhs):
+          rpos[0] = len(rhs) - lastheight + 1
       # page up
       elif ch == curses.KEY_PPAGE:
-        if not singlescroll or leftscroll:
+        if scroll('left'):
           lpos[0] -= lastheight - 4
           if lpos[0] < 0: lpos[0] = -1
-        if not singlescroll or not leftscroll:
+        if scroll('right'):
           rpos[0] -= lastheight - 4
           if rpos[0] < 0: rpos[0] = -1
       # page down
       elif ch == curses.KEY_NPAGE:
-        if not singlescroll or leftscroll:
-          if lastheight < len(lhs):
-            lpos[0] += lastheight - 4
-            if lpos[0] > len(lhs) - lastheight:
-              lpos[0] = len(lhs) - lastheight + 1
-        if not singlescroll or not leftscroll:
-          if lastheight < len(rhs):
-            rpos[0] += lastheight - 4
-            if rpos[0] > len(rhs) - lastheight:
-              rpos[0] = len(rhs) - lastheight + 1
+        if scroll('left') and lastheight < len(lhs):
+          lpos[0] += lastheight - 4
+          if lpos[0] > len(lhs) - lastheight:
+            lpos[0] = len(lhs) - lastheight + 1
+        if scroll('right') and lastheight < len(rhs):
+          rpos[0] += lastheight - 4
+          if rpos[0] > len(rhs) - lastheight:
+            rpos[0] = len(rhs) - lastheight + 1
       # scroll up
       elif ch == curses.KEY_UP:
-        if not singlescroll or leftscroll:
-          if lpos[0] >= 0: lpos[0] -= 1
-        if not singlescroll or not leftscroll:
-          if rpos[0] >= 0: rpos[0] -= 1
+        if scroll('left') and lpos[0] >= 0: lpos[0] -= 1
+        if scroll('right') and rpos[0] >= 0: rpos[0] -= 1
       # scroll down
       elif ch == curses.KEY_DOWN:
-        if not singlescroll or leftscroll:
-          if lastheight < len(lhs):
-            if lpos[0] < len(lhs) - lastheight + 1: lpos[0] += 1
-        if not singlescroll or not leftscroll:
-          if lastheight < len(rhs):
-            if rpos[0] < len(rhs) - lastheight + 1: rpos[0] += 1
+        if scroll('left') and lastheight < len(lhs) - 2:
+          if lpos[0] < len(lhs) - lastheight + 1: lpos[0] += 1
+        if scroll('right') and lastheight < len(rhs) - 2:
+          if rpos[0] < len(rhs) - lastheight + 1: rpos[0] += 1
       # scroll left
       elif ch == curses.KEY_LEFT:
-        if not singlescroll or leftscroll:
-          if lpos[1] > 0: lpos[1] -= 1
-        if not singlescroll or not leftscroll:
-          if rpos[1] > 0: rpos[1] -= 1
+        if scroll('left') and lpos[1] > 0:
+          lpos[1] -= 1
+        if scroll('right') and rpos[1] > 0:
+          rpos[1] -= 1
       # scroll right
       elif ch == curses.KEY_RIGHT:
-        if not singlescroll or leftscroll:
-          if lastwidth//2 - 2 < self.lwidth:
-            if lpos[1] < self.lwidth - lastwidth//2 + 2 - paneshmt:
-              lpos[1] += 1
-        if not singlescroll or not leftscroll:
-          if lastwidth//2 - 2 < self.rwidth:
-            if rpos[1] < self.rwidth - lastwidth//2 + 2 + paneshmt:
-              rpos[1] += 1
-      else:
-        # if we didn't change the pos then don't repaint
-        repaint = False
-      if repaint: lastheight, lastwidth = self.draw(lhs, lpos,
-                                                    rhs, rpos,
+        if scroll('left'):
+          if lastwidth//2 - 2 < self.lwidth - lpos[1] - paneshmt:
+            lpos[1] += 1
+        if scroll('right'):
+          if lastwidth//2 - 2 < self.rwidth - rpos[1] + paneshmt:
+            rpos[1] += 1
+      # if we didn't change the pos then don't repaint
+      else: repaint = False
+      if repaint:
+        lastheight, lastwidth = self.draw(lhs, lpos, rhs, rpos,
                                                     dohighlight, paneshmt)
       ch = self.stdscr.getch()
 
@@ -390,11 +377,9 @@ class DiffWindow:
     # track width
     maxwidth = len(title)
     for section in body:
-      for line in section:
-        maxwidth = max(len(line),maxwidth)
+      for line in section: maxwidth = max(len(line),maxwidth)
     if err: maxwidth = max(len(err),maxwidth)
-    for line in choices:
-      maxwidth = max(len(line),maxwidth)
+    for line in choices: maxwidth = max(len(line),maxwidth)
     # set colors to be used
     titlecolor = curses.color_pair(2) | curses.A_BOLD
     itemcolor = curses.color_pair(1)
@@ -469,19 +454,16 @@ class DiffWindow:
       elif ch == curses.KEY_UP:
         if hpos > 0:
           hpos -= 1
-          if actualtop + hpos - topline < actualtop:
-            topline -= 1
+          if actualtop + hpos - topline < actualtop: topline -= 1
       # go down
       elif ch == curses.KEY_DOWN:
         if hpos < len(choices) - 1:
           hpos += 1
-          if actualtop + hpos - topline == height:
-            topline += 1
+          if actualtop + hpos - topline == height: topline += 1
       # jump up
       elif ch == curses.KEY_PPAGE and hpos > 0:
         hpos -= 4
-        if hpos - topline < 0:
-          topline = hpos
+        if hpos - topline < 0: topline = hpos
         if hpos < 0:
           hpos = 0
           topline = 0
@@ -532,8 +514,7 @@ class DiffWindow:
           # test to see if we can get a list of the directory contents
           testpath = path + names[ch] if path == '/' else \
                                         path + '/' + names[ch]
-          try:
-            os.listdir(testpath)
+          try: os.listdir(testpath)
           except:
             # if we can't read the directory set an error string and continue
             error = 'Error reading directory \"' + testpath + '\"'
@@ -626,7 +607,7 @@ class DiffWindow:
         elif lhs is not None and ret is None:
           choices[legend.index('lhs')] = \
               choices[legend.index('lhs')].split(' (set to ')[0]
-        # had a filename before and have a different one now
+        # had a filename before and (may) have a different one now
         else:
           choices[legend.index('lhs')] = \
               choices[legend.index('lhs')].split(' (set to ')[0]
@@ -644,7 +625,7 @@ class DiffWindow:
         elif rhs is not None and ret is None:
           choices[legend.index('rhs')] = \
               choices[legend.index('rhs')].split(' (set to ')[0]
-        # had a filename before and have a different one now
+        # had a filename before and (may) have a different one now
         else:
           choices[legend.index('rhs')] = \
               choices[legend.index('rhs')].split(' (set to ')[0]
@@ -652,8 +633,12 @@ class DiffWindow:
         rhs = ret
       # show the diff of lhs and rhs
       elif legend[ch] == 'diff':
-        if not lhs or not rhs:
+        if not lhs and not rhs:
           error = 'Left- and Right- side files must be selected first!'
+        elif not lhs:
+          error = 'Left- side file must be selected first!'
+        elif not rhs:
+          error = 'Right- side file must be selected first!'
         else:
           self.showdiff(lhs, rhs)
       # show the command information
@@ -670,16 +655,11 @@ __name__ == __main__
 if __name__ == '__main__':
   if len(sys.argv) == 3:
     lhs, rhs = [], []
-    with open(sys.argv[1]) as infile:
-      lhs = infile.readlines()
-    with open(sys.argv[2]) as infile:
-      rhs = infile.readlines()
-    # intended usage
-    with DiffWindow() as win:
-      win.showdiff(lhs, rhs)
+    with open(sys.argv[1]) as infile: lhs = infile.readlines()
+    with open(sys.argv[2]) as infile: rhs = infile.readlines()
+    with DiffWindow() as win: win.showdiff(lhs, rhs)
   else:
-    with DiffWindow() as win:
-      win.mainmenu()
+    with DiffWindow() as win: win.mainmenu()
   # class usage
   #win = DiffWindow(unsafe=True)
   #win.initscr() # optional, called automatically in showdiff if unsafe=True
