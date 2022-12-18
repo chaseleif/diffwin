@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
-import curses, os, sys
+import curses, os, re, sys
+from string import printable
 
 '''
     DiffWindow - a Python curses script to compare 2 text files
@@ -25,7 +26,7 @@ import curses, os, sys
 #from displays import showmenu, filemenu, drawsplitpane
 
 '''
-showmenu(scr, title, body, err, choices, infobox, curs)
+showmenu(scr, title, body, err, choices, infobox, curs, hpos)
 
   This method is used to print a text menu using the screen scr
 
@@ -35,7 +36,7 @@ showmenu(scr, title, body, err, choices, infobox, curs)
   Each is separated by a line
   The error, if present, is then printed in error color
   The remaining lines are "choice" lines which can be scrolled
-  The current selection will be highlighted
+  The current selection at hpos will be highlighted
 
   The user makes their selection with navigation keys
   When enter is pressed, the corresponding index of choices is returned
@@ -48,20 +49,22 @@ showmenu(scr, title, body, err, choices, infobox, curs)
     1 is (possibly) an underscore/line
     2 is (possibly) a block
 '''
-def showmenu(scr,title='',body=[[]],err=None,choices=[],infobox=False, curs=0):
+def showmenu(scr,
+              title='', body=[[]], err=None, choices=[],
+              infobox=False, curs=0, hpos=0):
   # track width
   maxwidth = len(title)
   for section in body:
     for line in section: maxwidth = max(len(line),maxwidth)
-  if err: maxwidth = max(len(err),maxwidth)
+  if type(err) is str: maxwidth = max(len(err),maxwidth)
+  elif type(err) is list:
+    for e in err: maxwidth = max(len(e),maxwidth)
   for line in choices: maxwidth = max(len(line),maxwidth)
   # set colors to be used
   titlecolor = curses.color_pair(2) | curses.A_BOLD
   itemcolor = curses.color_pair(1)
   activecolor = curses.color_pair(1) | curses.A_BOLD
   errorcolor = curses.color_pair(3) | curses.A_BOLD
-  # the highlight position (row of choices)
-  hpos = 0
   # the top line (row in choices) that is being displayed
   topline = 0
   while True:
@@ -87,7 +90,13 @@ def showmenu(scr,title='',body=[[]],err=None,choices=[],infobox=False, curs=0):
     linenum += 1
     if err:
       # print an error message if we have one, add 2 lines
-      scr.insstr(linenum, 4+lshift, err, errorcolor)
+      if type(err) is list:
+        for e in err:
+          if e == '': continue
+          scr.insstr(linenum, 4+lshift, e, errorcolor)
+          linenum += 1
+        linenum -= 1
+      else: scr.insstr(linenum, 4+lshift, err, errorcolor)
       linenum += 2
     # track the actual top line of the choices
     actualtop = linenum
@@ -166,13 +175,16 @@ def filemenu(scr, title=''):
   path = os.getcwd()
   error = None
   body = [['Select a text file'], ['Path: ' + path]]
+  ch = 0
   while True:
     # give an option to go up a level unless we are at the root
+    if path == '': path = '/'
     names = ['../'] if path != '/' else []
     # add the contents of the directory
     names += [name for name in os.listdir(path)]
     # get the response
-    ch = showmenu(scr, title=title, body=body, err=error, choices=names)
+    ch = showmenu(scr, title=title, body=body, err=error,
+                  choices=names, hpos=ch)
     # allow to return without opening a file:
     if ch is None: return None, None
     # reset the error message
@@ -190,14 +202,15 @@ def filemenu(scr, title=''):
         testpath = path + names[ch] if path == '/' else \
                                       path + '/' + names[ch]
         try: os.listdir(testpath)
-        except:
+        except Exception as e:
           # if we can't read the directory set an error string and continue
-          error = 'Error reading directory \"' + testpath + '\"'
+          error = str(e).split(':')
           continue
         # if we could read the directory set the path
         path = testpath
       # update the path in the body text
       body[-1][-1] = 'Path: ' + path
+      ch = 0
     # our selection was a file
     else:
       # try to read the file
@@ -208,10 +221,15 @@ def filemenu(scr, title=''):
         # (some binary files will pass here and throw an exception if used)
         with open(path+'/'+names[ch]) as infile:
           contents = infile.readlines()
-          return contents, names[ch]
-      except:
-        error = 'Error opening \"' + path + '/' + names[ch] + '\"'
-        if path == '': path = '/'
+          if not contents:
+            error = 'File \"' + names[ch] + '\" appears empty'
+          for line in contents:
+            if not any(c in printable for c in line):
+              error = 'File \"' + names[ch] + '\" not printable'
+              break
+          if not error: return contents, names[ch]
+      except Exception as e:
+        error = str(e).split(':')
 
 '''
 drawsplitpane(scr, lhs, lpos, rhs, rpos, highlight, paneshmt, halfgap)
@@ -423,9 +441,11 @@ class DiffWindow:
       if self.unsafe: self.initscr()
       else:
         raise AssertionError('unsafe is not true and curses not initialized')
-    # remove empty lines and trailing whitespace from lhs / rhs
-    lhs = [line.rstrip() for line in lhs if line.strip() != '']
-    rhs = [line.rstrip() for line in rhs if line.strip() != '']
+    # remove empty lines, trailing whitespace, and tabs from lhs / rhs
+    lhs = [re.sub('\t','  ',line.rstrip()) for line in lhs \
+                                              if line.strip() != '']
+    rhs = [re.sub('\t','  ',line.rstrip()) for line in rhs \
+                                              if line.strip() != '']
     # get column length for lhs and rhs (max of any element)
     self.lwidth = 0
     for row in lhs: self.lwidth = max(len(row),self.lwidth)
