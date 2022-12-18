@@ -202,6 +202,7 @@ def filemenu(scr, title=''):
                         if os.path.isdir(path+'/'+name)]
     names += [name for name in os.listdir(path) \
                         if os.path.isfile(path+'/'+name)]
+    names.sort()
     # get the response
     topline, ch = showmenu(scr, title=title, body=body, err=error,
                             choices=names, topline=topline, hpos=ch)
