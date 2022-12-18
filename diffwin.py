@@ -224,7 +224,7 @@ def filemenu(scr, title=''):
           if not contents:
             error = 'File \"' + names[ch] + '\" appears empty'
           for line in contents:
-            if not any(c in printable for c in line):
+            if any(c not in printable for c in line):
               error = 'File \"' + names[ch] + '\" not printable'
               break
           if not error: return contents, names[ch]
