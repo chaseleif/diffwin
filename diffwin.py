@@ -51,13 +51,16 @@ showmenu(scr, title, body, err, choices, infobox, curs, hpos)
 '''
 def showmenu(scr,
               title='', body=[[]], err=None, choices=[],
-              infobox=False, curs=0, hpos=0):
+              infobox=False, curs=0, topline=0, hpos=0):
+  if hpos < topline: hpos = topline
   # track width
   maxwidth = len(title)
   for section in body:
     for line in section: maxwidth = max(len(line),maxwidth)
+  errorlen = 1
   if type(err) is str: maxwidth = max(len(err),maxwidth)
   elif type(err) is list:
+    errorlen = len(err)
     for e in err: maxwidth = max(len(e),maxwidth)
   for line in choices: maxwidth = max(len(line),maxwidth)
   # set colors to be used
@@ -65,9 +68,13 @@ def showmenu(scr,
   itemcolor = curses.color_pair(1)
   activecolor = curses.color_pair(1) | curses.A_BOLD
   errorcolor = curses.color_pair(3) | curses.A_BOLD
-  # the top line (row in choices) that is being displayed
-  topline = 0
+  # when the counter hits zero make the error disappear
+  errorcounter = None
   while True:
+    if err and errorcounter == 0:
+      topline -= errorlen + 1
+      if topline < 0: topline = 0
+      err = None
     # get the current dimensions
     height, width = scr.getmaxyx()
     # get side buffer
@@ -96,8 +103,17 @@ def showmenu(scr,
           scr.insstr(linenum, 4+lshift, e, errorcolor)
           linenum += 1
         linenum -= 1
-      else: scr.insstr(linenum, 4+lshift, err, errorcolor)
+      else:
+        scr.insstr(linenum, 4+lshift, err, errorcolor)
       linenum += 2
+      if errorcounter is None:
+        errorcounter = 5
+        if height-linenum < len(choices):
+          topline += errorlen + 1
+          # if the error pushes hpos out of sight
+          if topline > hpos: topline = hpos
+      else:
+        errorcounter -= 1
     # track the actual top line of the choices
     actualtop = linenum
     # i is zero indexed matching hpos
@@ -122,7 +138,7 @@ def showmenu(scr,
     curses.curs_set(0)
     # allow to return without making a selection:
     # escape = 27, 'Q'=81, 'q'=113
-    if ch in [27, 81, 113]: return None
+    if ch in [27, 81, 113]: return None, None
     # this argument indicates we return immediately on a keypress
     if infobox: return
     # go to the top
@@ -158,7 +174,7 @@ def showmenu(scr,
       if actualtop + hpos - topline >= height:
         topline += actualtop + hpos - topline - height + 1
     # on enter we return our highlighted position
-    elif ch in [curses.KEY_ENTER, 10, 13]: return hpos
+    elif ch in [curses.KEY_ENTER, 10, 13]: return topline, hpos
 
 '''
 filemenu(scr, title)
@@ -175,22 +191,26 @@ def filemenu(scr, title=''):
   path = os.getcwd()
   error = None
   body = [['Select a text file'], ['Path: ' + path]]
+  topline = 0
   ch = 0
   while True:
     # give an option to go up a level unless we are at the root
     if path == '': path = '/'
     names = ['../'] if path != '/' else []
     # add the contents of the directory
-    names += [name for name in os.listdir(path)]
+    names += [name+'/' for name in os.listdir(path) \
+                        if os.path.isdir(path+'/'+name)]
+    names += [name for name in os.listdir(path) \
+                        if os.path.isfile(path+'/'+name)]
     # get the response
-    ch = showmenu(scr, title=title, body=body, err=error,
-                  choices=names, hpos=ch)
+    topline, ch = showmenu(scr, title=title, body=body, err=error,
+                            choices=names, topline=topline, hpos=ch)
     # allow to return without opening a file:
     if ch is None: return None, None
     # reset the error message
     error = None
     # if we selected to go up or our selection is a subdirectory
-    if names[ch] == '../' or os.path.isdir(path+'/'+names[ch]):
+    if names[ch][-1] == '/':
       # if we chose to go up remove the last directory from the path
       if names[ch] == '../':
         path = '/'.join(path.split('/')[:-1])
@@ -199,8 +219,8 @@ def filemenu(scr, title=''):
       # we chose a directory from our path
       else:
         # test to see if we can get a list of the directory contents
-        testpath = path + names[ch] if path == '/' else \
-                                      path + '/' + names[ch]
+        names[ch] = names[ch][:-1]
+        testpath = path + names[ch] if path == '/' else path + '/' + names[ch]
         try: os.listdir(testpath)
         except Exception as e:
           # if we can't read the directory set an error string and continue
@@ -211,6 +231,7 @@ def filemenu(scr, title=''):
       # update the path in the body text
       body[-1][-1] = 'Path: ' + path
       ch = 0
+      topline = 0
     # our selection was a file
     else:
       # try to read the file
@@ -592,14 +613,14 @@ class DiffWindow:
     # a legend of choices to allow more descriptive comparison
     legend = ['lhs','rhs','diff','commands','quit']
     # initialize our variables
-    ch = -1
+    ch = 0
     error = None
     lhs, rhs = None, None
     # while quit is not chosen
-    while ch != choices.index('Quit'):
+    while True:
       # get a choice
-      ch = showmenu(self.stdscr, title=title, body=body,
-                    err=error, choices=choices)
+      topline, ch = showmenu(self.stdscr, title=title, body=body,
+                              err=error, choices=choices, hpos=ch)
       # allow to quit on escape, q, or Q:
       if ch is None: break
       error=None
@@ -652,6 +673,9 @@ class DiffWindow:
       # show the command information
       elif legend[ch] == 'commands':
         self.commands(title=title)
+      # quit
+      elif legend[ch] == 'quit':
+        return
 
 '''
 __name__ == __main__
