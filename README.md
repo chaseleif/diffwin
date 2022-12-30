@@ -4,6 +4,13 @@
 
 ___
 
+## Standalone usage:
+
+To open using the menu-driven interface: `python3 diffwin.py`  
+To open in the diff view: `python3 diffwin.py file1 file2`  
+
+___
+
 ## Example usage from the script:
 
 ```
@@ -31,11 +38,11 @@ Quit/cancel: escape, q, Q
 ___
 ## Diff window commands:
 
-Toggle left and right pane lock:   space  
+Toggle left and right pane lock: space  
 Toggle left and right pane scroll: tab  
-Shift pane separator left/right:   +, -  
-Reset pane separator location:     =  
-Toggle matching line highlight:    d, D, h, H  
+Shift pane separator left/right: +, -  
+Reset pane separator location: =  
+Toggle matching line highlight: d, D, h, H  
 
 ___
 ## Further information:

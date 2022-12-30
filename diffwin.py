@@ -698,3 +698,5 @@ if __name__ == '__main__':
   #win.initscr() # optional, called automatically in showdiff if unsafe=True
   #win.showdiff(lhs, rhs)
   #win.stopscr() # called in del if initscr has been called
+
+# vim: tabstop=2 shiftwidth=2 expandtab
